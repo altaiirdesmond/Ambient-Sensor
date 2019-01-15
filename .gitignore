@@ -3,3 +3,9 @@
 ################################################################################
 
 /__vm
+/Release
+/ProjectIrinco.vcxproj.user
+/ProjectIrinco.vcxproj.filters
+/ProjectIrinco.vcxproj
+/ProjectIrinco.sln
+/.vs/ProjectIrinco/v15
