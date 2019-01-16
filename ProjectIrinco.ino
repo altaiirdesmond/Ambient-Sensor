@@ -38,7 +38,6 @@ File sensorDataFile;
 
 RtcDS3231<TwoWire> Rtc(Wire);
 
-String ip;
 int seconds = 0;
 bool firstInit = true;
 
@@ -49,13 +48,13 @@ void setup() {
 	lcd.begin();
 	lcd.backlight();
 
-	lcdDisplay(0, 0, "Initializing", 0);
-	lcdDisplay(0, 1, "modules.", 1000);
+	lcdDisplay(0, 0, F("Initializing"), 0);
+	lcdDisplay(0, 1, F("modules."), 1000);
 
 	dht0.begin();
 	dht1.begin();
 
-	SD.begin(4);
+	while (!SD.begin(4));
 
 	Rtc.Begin();
 
@@ -73,14 +72,14 @@ void setup() {
 	Rtc.SetSquareWavePin(DS3231SquareWavePin_ModeNone);
 
 	lcd.clear();
-	lcdDisplay(0, 1, "Waiting ESP.", 0);
+	lcdDisplay(0, 1, F("Waiting ESP."), 0);
 
-	while (ip == "") {
+	while (1) {
 		if (softSerial.available()) {
 			String t = softSerial.readString();
-			if (t.startsWith("IP")) {
-				ip = t.substring(4, 18);
-				lcdDisplay(0, 1, ip, 2000);
+			if (t.startsWith(F("IP"))) {
+				lcdDisplay(0, 1, t.substring(4, 18), 2000);
+				break;
 			}
 		}
 	}
@@ -89,51 +88,64 @@ void setup() {
 void loop() {
 	if (seconds == 300000 || firstInit) {
 		firstInit = false;
+		seconds = 0;
 
 		float h0 = dht0.readHumidity();
 		float t0 = dht0.readTemperature();
 		float h1 = dht1.readHumidity();
 		float t1 = dht1.readTemperature();
 
-		lcd.setCursor(0, 0);
+		/*lcd.setCursor(0, 0);
+		lcd.print(F("T1"));
 		lcd.print("T1:" + String(t0, '\001') + " T2:" + String(t1, '\001'));
 		lcd.setCursor(0, 1);
-		lcd.print("H1:" + String(h0, '\001') + " H2:" + String(h1, '\001'));
+		lcd.print("H1:" + String(h0, '\001') + " H2:" + String(h1, '\001'));*/
+
+		lcd.clear();
+		lcd.setCursor(0, 0);
+		lcd.print(F("TEMP:"));
+		lcd.setCursor(6, 0);
+		lcd.print((t0 + t1) / 2);
+
+		lcd.setCursor(0, 1);
+		lcd.print(F("HUM:"));
+		lcd.setCursor(6, 1);
+		lcd.print((h0 + h1) / 2);
 
 		serialize(
-			"reading",
-			"SensorData",
+			F("reading"),
+			F("SensorData"),
 			String(t0, '\001') + "," + String(t1, '\001') + "," + String(h0, '\001') + "," + String(h1, '\001')
 		);
 
-		sensorDataFile = SD.open("SensorData.txt", FILE_WRITE);
+		sensorDataFile = SD.open(F("SensorData.txt"), FILE_WRITE);
 		if (sensorDataFile) {
 			sensorDataFile.print(formatTime(Rtc.GetDateTime()));
 			sensorDataFile.println(String(t0, '\001') + "," + String(t1, '\001') + "," + String(h0, '\001') + "," + String(h1, '\001'));
-		
+
 			sensorDataFile.close();
 		}
 	}
 
-	Serial.println(formatTime(Rtc.GetDateTime()));
+	//Serial.println(formatTime(Rtc.GetDateTime()));
 
 	delay(1000);
 	seconds++;
 }
 
 String sdRead() {
-	sensorDataFile = SD.open("SensorData.txt");
+	sensorDataFile = SD.open(F("SensorData.txt"));
 	String data;
 	if (sensorDataFile) {
 		while (sensorDataFile.available()) {
-			// ...
-			if (sensorDataFile.readString().equals("")) {
-				sensorDataFile.close();
-				break;
-			}
+			// Read SensorData.txt content
 			data += sensorDataFile.readString();
 		}
+
+		sensorDataFile.close();
 	}
+
+	return data;
 }
 
 String formatTime(const RtcDateTime& dt) {
@@ -162,7 +174,7 @@ void serialize(String contentType, String key, String value) {
 	JsonObject &root = jsonBuffer.createObject();
 	root[key] = value;
 
-	String document = "reading\n";
+	String document = F("reading\n");
 	root.prettyPrintTo(document);
 	softSerial.println(document);
 	//Serial.println(document);
