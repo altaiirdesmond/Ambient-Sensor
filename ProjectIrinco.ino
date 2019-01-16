@@ -55,6 +55,8 @@ void setup() {
 	dht0.begin();
 	dht1.begin();
 
+	SD.begin(4);
+
 	Rtc.Begin();
 
 	RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
@@ -69,15 +71,6 @@ void setup() {
 
 	Rtc.Enable32kHzPin(false);
 	Rtc.SetSquareWavePin(DS3231SquareWavePin_ModeNone);
-
-	//if (!SD.begin(10)) {
-	//	lcd.clear();
-	//	lcdDisplay(0, 0, "SD Failed.", 0);
-	//	lcdDisplay(0, 1, "Try reseating SDmod.", 0);
-	//	// Serial.println("SD initialization failed!");
-	//	while (1)
-	//		;
-	//}
 
 	lcd.clear();
 	lcdDisplay(0, 1, "Waiting ESP.", 0);
@@ -112,12 +105,35 @@ void loop() {
 			"SensorData",
 			String(t0, '\001') + "," + String(t1, '\001') + "," + String(h0, '\001') + "," + String(h1, '\001')
 		);
+
+		sensorDataFile = SD.open("SensorData.txt", FILE_WRITE);
+		if (sensorDataFile) {
+			sensorDataFile.print(formatTime(Rtc.GetDateTime()));
+			sensorDataFile.println(String(t0, '\001') + "," + String(t1, '\001') + "," + String(h0, '\001') + "," + String(h1, '\001'));
+		
+			sensorDataFile.close();
+		}
 	}
 
 	Serial.println(formatTime(Rtc.GetDateTime()));
 
 	delay(1000);
 	seconds++;
+}
+
+String sdRead() {
+	sensorDataFile = SD.open("SensorData.txt");
+	String data;
+	if (sensorDataFile) {
+		while (sensorDataFile.available()) {
+			// ...
+			if (sensorDataFile.readString().equals("")) {
+				sensorDataFile.close();
+				break;
+			}
+			data += sensorDataFile.readString();
+		}
+	}
 }
 
 String formatTime(const RtcDateTime& dt) {
