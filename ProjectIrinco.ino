@@ -23,11 +23,10 @@
 #include <RtcDS3231.h>
 #include <SD.h>
 #include <SPI.h>
-#include <SoftwareSerial.h>
+//#include <SoftwareSerial.h>
 #include <Wire.h>
-#include <string.h>
 
-SoftwareSerial softSerial(8, 9);
+//SoftwareSerial softSerial(2, 3);
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
@@ -42,19 +41,24 @@ int seconds = 0;
 bool firstInit = true;
 
 void setup() {
-	softSerial.begin(74880);
+	// softSerial.begin(74880);
 	Serial.begin(74880);
+	Serial1.begin(74880);
 
 	lcd.begin();
 	lcd.backlight();
 
 	lcdDisplay(0, 0, F("Initializing"), 0);
 	lcdDisplay(0, 1, F("modules."), 1000);
-
+  
 	dht0.begin();
 	dht1.begin();
 
-	while (!SD.begin(4));
+	if (!SD.begin(53)) {
+		lcd.clear();
+		lcdDisplay(0, 1, F("SD Failed"), 0);
+		while (1);
+	}
 
 	Rtc.Begin();
 
@@ -72,11 +76,12 @@ void setup() {
 	Rtc.SetSquareWavePin(DS3231SquareWavePin_ModeNone);
 
 	lcd.clear();
-	lcdDisplay(0, 1, F("Waiting ESP."), 0);
-
+	lcdDisplay(0, 0, F("Waiting ESP..."), 0);
+  
 	while (1) {
-		if (softSerial.available()) {
-			String t = softSerial.readString();
+		if (Serial1.available()) {
+			lcdDisplay(0, 1, F("acquiring IP"), 0);
+			String t = Serial1.readString();
 			if (t.startsWith(F("IP"))) {
 				lcdDisplay(0, 1, t.substring(4, 18), 2000);
 				break;
@@ -86,55 +91,67 @@ void setup() {
 }
 
 void loop() {
-	if (seconds == 300000 || firstInit) {
+	if (seconds == 300 || firstInit) {
 		firstInit = false;
 		seconds = 0;
+
+		Serial.println(F("5mins"));
 
 		float h0 = dht0.readHumidity();
 		float t0 = dht0.readTemperature();
 		float h1 = dht1.readHumidity();
 		float t1 = dht1.readTemperature();
 
-		/*lcd.setCursor(0, 0);
-		lcd.print(F("T1"));
-		lcd.print("T1:" + String(t0, '\001') + " T2:" + String(t1, '\001'));
-		lcd.setCursor(0, 1);
-		lcd.print("H1:" + String(h0, '\001') + " H2:" + String(h1, '\001'));*/
+		/* File name should follow 8.3 format */
+		if (!SD.exists(F("log.txt"))) {
+			sensorDataFile = SD.open(F("log.txt"), FILE_WRITE); // Create
+			if (sensorDataFile) {
+				sensorDataFile.print(formatTime(Rtc.GetDateTime()));
+				sensorDataFile.print("|");
+				sensorDataFile.println(String(t0, '\001') + "," + String(t1, '\001') + "," + String(h0, '\001') + "," + String(h1, '\001'));
+				
+				sensorDataFile.close();
+			}
+		}
+		else {
+			sensorDataFile = SD.open(F("log.txt"), O_RDWR | O_APPEND); // Append
+			if (sensorDataFile) {
+				sensorDataFile.print(formatTime(Rtc.GetDateTime()));
+				sensorDataFile.println(String(t0, '\001') + "," + String(t1, '\001') + "," + String(h0, '\001') + "," + String(h1, '\001'));
+
+				sensorDataFile.close();
+			}
+		}
+		lcd.clear();
+		lcdDisplay(0, 0, F("Logged"), 500);
 
 		lcd.clear();
 		lcd.setCursor(0, 0);
-		lcd.print(F("TEMP:"));
-		lcd.setCursor(6, 0);
-		lcd.print((t0 + t1) / 2);
+		lcd.print(F("TEMPERATURE:"));
+		lcd.setCursor(14, 0);
+		//lcd.print((t0 + t1) / 2);
+		lcd.print(t0);
 
 		lcd.setCursor(0, 1);
-		lcd.print(F("HUM:"));
-		lcd.setCursor(6, 1);
-		lcd.print((h0 + h1) / 2);
+		lcd.print(F("HUMIDITY:"));
+		lcd.setCursor(11, 1);
+		//lcd.print((h0 + h1) / 2);
+		lcd.print(h0);
 
 		serialize(
 			F("reading"),
 			F("SensorData"),
 			String(t0, '\001') + "," + String(t1, '\001') + "," + String(h0, '\001') + "," + String(h1, '\001')
 		);
-
-		sensorDataFile = SD.open(F("SensorData.txt"), FILE_WRITE);
-		if (sensorDataFile) {
-			sensorDataFile.print(formatTime(Rtc.GetDateTime()));
-			sensorDataFile.println(String(t0, '\001') + "," + String(t1, '\001') + "," + String(h0, '\001') + "," + String(h1, '\001'));
-
-			sensorDataFile.close();
-		}
 	}
-
-	//Serial.println(formatTime(Rtc.GetDateTime()));
 
 	delay(1000);
 	seconds++;
+	Serial.println(seconds);
 }
 
 String sdRead() {
-	sensorDataFile = SD.open(F("SensorData.txt"));
+	sensorDataFile = SD.open(F("sensordata.txt"));
 	String data;
 	if (sensorDataFile) {
 		while (sensorDataFile.available()) {
@@ -153,7 +170,7 @@ String formatTime(const RtcDateTime& dt) {
 
 	snprintf_P(datestring,
 		countof(datestring),
-		PSTR("%02u/%02u/%04u %02u:%02u"),
+		PSTR("%02u/%02u/%04u|%02u:%02u"),
 		dt.Month(),
 		dt.Day(),
 		dt.Year(),
@@ -176,6 +193,6 @@ void serialize(String contentType, String key, String value) {
 
 	String document = F("reading\n");
 	root.prettyPrintTo(document);
-	softSerial.println(document);
+	Serial1.println(document);
 	//Serial.println(document);
 }
