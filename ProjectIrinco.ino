@@ -5,13 +5,13 @@
 	attached to the various pins.
 
 	The circuit:
-	* list the components attached to each input
-	* list the components attached to each output
+	 list the components attached to each input
+	 list the components attached to each output
 
 	Created 01/01/19
-	By cdtekk
+	By ...
 	Modified 01/16/19
-	By cdtekk
+	By ...
 
 */
 
@@ -21,178 +21,147 @@
 #include <DHT.h>
 #include <LiquidCrystal_I2C.h>
 #include <RtcDS3231.h>
-#include <SD.h>
 #include <SPI.h>
-//#include <SoftwareSerial.h>
 #include <Wire.h>
-
-//SoftwareSerial softSerial(2, 3);
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 DHT dht0(6, DHT22);
 DHT dht1(7, DHT22);
 
-File sensorDataFile;
-
 RtcDS3231<TwoWire> Rtc(Wire);
 
-int seconds = 0;
+const int relay0 = 8;
+const int relay1 = 9;
+
+unsigned long lastDisplayUpdate = 0;
+unsigned long lastFanUpdate = 0;
 bool firstInit = true;
 
 void setup() {
-	// softSerial.begin(74880);
-	Serial.begin(74880);
-	Serial1.begin(74880);
+  pinMode(relay0, OUTPUT);
+  pinMode(relay1, OUTPUT);
 
-	lcd.begin();
-	lcd.backlight();
+  // softSerial.begin(74880);
+  Serial.begin(74880);
+  Serial1.begin(74880);
 
-	lcdDisplay(0, 0, F("Initializing"), 0);
-	lcdDisplay(0, 1, F("modules."), 1000);
-  
-	dht0.begin();
-	dht1.begin();
+  lcd.begin();
+  lcd.backlight();
 
-	if (!SD.begin(53)) {
-		lcd.clear();
-		lcdDisplay(0, 1, F("SD Failed"), 0);
-		while (1);
-	}
+  lcdDisplay(0, 0, F("Initializing"), 0);
+  lcdDisplay(0, 1, F("modules."), 1000);
 
-	Rtc.Begin();
+  dht0.begin();
+  dht1.begin();
 
-	RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
+  Rtc.Begin();
 
-	if (!Rtc.IsDateTimeValid()) {
-		Rtc.SetDateTime(compiled);
-	}
+  RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
 
-	if (!Rtc.GetIsRunning()) {
-		Rtc.SetIsRunning(true);
-	}
+  if (!Rtc.IsDateTimeValid()) {
+    Rtc.SetDateTime(compiled);
+  }
 
-	Rtc.Enable32kHzPin(false);
-	Rtc.SetSquareWavePin(DS3231SquareWavePin_ModeNone);
+  if (!Rtc.GetIsRunning()) {
+    Rtc.SetIsRunning(true);
+  }
 
-	lcd.clear();
-	lcdDisplay(0, 0, F("Waiting ESP..."), 0);
-  
-	while (1) {
-		if (Serial1.available()) {
-			lcdDisplay(0, 1, F("acquiring IP"), 0);
-			String t = Serial1.readString();
-			if (t.startsWith(F("IP"))) {
-				lcdDisplay(0, 1, t.substring(4, 18), 2000);
-				break;
-			}
-		}
-	}
+  RtcDateTime now = Rtc.GetDateTime();
+  if (now < compiled) {
+    Rtc.SetDateTime(compiled);
+  }
+
+  Rtc.Enable32kHzPin(false);
+  Rtc.SetSquareWavePin(DS3231SquareWavePin_ModeNone);
+
+  lcd.clear();
+  lcdDisplay(0, 0, F("Waiting ESP..."), 0);
+  while (1) {
+    if (Serial1.available()) {
+      lcdDisplay(0, 1, F("acquiring IP"), 0);
+      String t = Serial1.readString();
+      if (t.startsWith(F("IP"))) {
+        lcd.clear();
+        lcdDisplay(0, 0, F("Connect to"), 0);
+        lcdDisplay(0, 1, t.substring(4, 18), 2000);
+        break;
+      }
+    }
+  }
 }
 
 void loop() {
-	if (seconds == 300 || firstInit) {
-		firstInit = false;
-		seconds = 0;
+  unsigned long currentMillis = millis(); // Gets track of time
+  if ((unsigned long)(currentMillis - lastDisplayUpdate) >= 300000 || firstInit) {
+    firstInit = false;
+    lastDisplayUpdate = currentMillis; // Set new time at which to run this block
 
-		Serial.println(F("5mins"));
+    float h0 = dht0.readHumidity();
+    float t0 = dht0.readTemperature();
+    float h1 = dht1.readHumidity();
+    float t1 = dht1.readTemperature();
 
-		float h0 = dht0.readHumidity();
-		float t0 = dht0.readTemperature();
-		float h1 = dht1.readHumidity();
-		float t1 = dht1.readTemperature();
+    lcd.clear();
+    lcdDisplay(0, 0, F("Logged."), 500);
 
-		/* File name should follow 8.3 format */
-		if (!SD.exists(F("log.txt"))) {
-			sensorDataFile = SD.open(F("log.txt"), FILE_WRITE); // Create
-			if (sensorDataFile) {
-				sensorDataFile.print(formatTime(Rtc.GetDateTime()));
-				sensorDataFile.print("|");
-				sensorDataFile.println(String(t0, '\001') + "," + String(t1, '\001') + "," + String(h0, '\001') + "," + String(h1, '\001'));
-				
-				sensorDataFile.close();
-			}
-		}
-		else {
-			sensorDataFile = SD.open(F("log.txt"), O_RDWR | O_APPEND); // Append
-			if (sensorDataFile) {
-				sensorDataFile.print(formatTime(Rtc.GetDateTime()));
-				sensorDataFile.println(String(t0, '\001') + "," + String(t1, '\001') + "," + String(h0, '\001') + "," + String(h1, '\001'));
+    // Display sensor values to LCD
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(F("TEMPERATURE:"));
+    lcd.setCursor(12, 0);
+    lcd.print((t0 + t1) / 2);
 
-				sensorDataFile.close();
-			}
-		}
-		lcd.clear();
-		lcdDisplay(0, 0, F("Logged"), 500);
+    lcd.setCursor(0, 1);
+    lcd.print(F("HUMIDITY:"));
+    lcd.setCursor(12, 1);
+    lcd.print((h0 + h1) / 2);
 
-		lcd.clear();
-		lcd.setCursor(0, 0);
-		lcd.print(F("TEMPERATURE:"));
-		lcd.setCursor(14, 0);
-		//lcd.print((t0 + t1) / 2);
-		lcd.print(t0);
+    // POST sensor values to server
+    DynamicJsonBuffer jsonBuffer;
+    JsonObject &root = jsonBuffer.createObject();
+    root["temperature"] = (t0 + t1) / 2;
+    root["humidity"] = (h0 + h1) / 2;
+    root["time"] = formatTime(Rtc.GetDateTime());
 
-		lcd.setCursor(0, 1);
-		lcd.print(F("HUMIDITY:"));
-		lcd.setCursor(11, 1);
-		//lcd.print((h0 + h1) / 2);
-		lcd.print(h0);
+    String document = F("reading\n");
+    root.prettyPrintTo(document);
+    Serial1.println(document);
+    Serial.println(document);
+  }
 
-		serialize(
-			F("reading"),
-			F("SensorData"),
-			String(t0, '\001') + "," + String(t1, '\001') + "," + String(h0, '\001') + "," + String(h1, '\001')
-		);
-	}
+  if ((unsigned long)(currentMillis - lastFanUpdate) >= 500) {
+    lastFanUpdate = currentMillis;
 
-	delay(1000);
-	seconds++;
-	Serial.println(seconds);
-}
+    if (Serial1.available()) {
+      String x = Serial1.readString();
+      if (x.startsWith(F("FanControl"))) {
+        pinMode(relay0, x.substring(11, 12).toInt());
+        pinMode(relay1, x.substring(13, 14).toInt());
 
-String sdRead() {
-	sensorDataFile = SD.open(F("sensordata.txt"));
-	String data;
-	if (sensorDataFile) {
-		while (sensorDataFile.available()) {
-			// Read SensorData.txt content
-			data += sensorDataFile.readString();
-		}
-
-		sensorDataFile.close();
-	}
-
-	return data;
+        String data = x.substring(11, 12) + F(",") + x.substring(13, 14);
+        Serial.println(data);
+      }
+    }
+  }
 }
 
 String formatTime(const RtcDateTime& dt) {
-	char datestring[20];
+  char datestring[20];
 
-	snprintf_P(datestring,
-		countof(datestring),
-		PSTR("%02u/%02u/%04u|%02u:%02u"),
-		dt.Month(),
-		dt.Day(),
-		dt.Year(),
-		dt.Hour(),
-		dt.Minute());
-	return datestring;
+  snprintf_P(datestring,
+             countof(datestring),
+             PSTR("%02u/%02u/%04u,%02u:%02u"),
+             dt.Month(),
+             dt.Day(),
+             dt.Year(),
+             dt.Hour(),
+             dt.Minute());
+  return datestring;
 }
 
 void lcdDisplay(int col, int row, String caption, int _delay) {
-	lcd.setCursor(col, row);
-	lcd.print(caption);		//Use print function instead of println 
-	delay(_delay);
-}
-
-void serialize(String contentType, String key, String value) {
-	//Choose carefully the size. Might not work properly
-	StaticJsonBuffer<60> jsonBuffer;
-	JsonObject &root = jsonBuffer.createObject();
-	root[key] = value;
-
-	String document = F("reading\n");
-	root.prettyPrintTo(document);
-	Serial1.println(document);
-	//Serial.println(document);
+  lcd.setCursor(col, row);
+  lcd.print(caption);		//Use print function instead of println
+  delay(_delay);
 }
