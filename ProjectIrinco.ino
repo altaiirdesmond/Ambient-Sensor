@@ -1,17 +1,17 @@
 /*
-	Project temperature sensing
+  Project temperature sensing
 
-	Describe what it does in layman's terms.  Refer to the components
-	attached to the various pins.
+  Describe what it does in layman's terms.  Refer to the components
+  attached to the various pins.
 
-	The circuit:
-	 list the components attached to each input
-	 list the components attached to each output
+  The circuit:
+   list the components attached to each input
+   list the components attached to each output
 
-	Created 01/01/19
-	By ...
-	Modified 01/16/19
-	By ...
+  Created 01/01/19
+  By ...
+  Modified 01/16/19
+  By ...
 
 */
 
@@ -110,22 +110,24 @@ void loop() {
     lcd.setCursor(0, 0);
     lcd.print(F("TEMPERATURE:"));
     lcd.setCursor(12, 0);
-    lcd.print((t0 + t1) / 2);
+    int averageT = (t0 + t1) / 2;
+    lcd.print(averageT);
 
     lcd.setCursor(0, 1);
     lcd.print(F("HUMIDITY:"));
     lcd.setCursor(12, 1);
-    lcd.print((h0 + h1) / 2);
+    int averageH = (h0 + h1) / 2;
+    lcd.print(averageH);
 
     // POST sensor values to server
     DynamicJsonBuffer jsonBuffer;
     JsonObject &root = jsonBuffer.createObject();
-    root["temperature"] = (t0 + t1) / 2;
-    root["humidity"] = (h0 + h1) / 2;
+    root["temperature"] = averageT;
+    root["humidity"] = averageH;
     root["time"] = formatTime(Rtc.GetDateTime());
 
-    String document = F("reading\n");
-    root.prettyPrintTo(document);
+    String document = F("reading");
+    root.printTo(document);
     Serial1.println(document);
     Serial.println(document);
   }
@@ -162,6 +164,6 @@ String formatTime(const RtcDateTime& dt) {
 
 void lcdDisplay(int col, int row, String caption, int _delay) {
   lcd.setCursor(col, row);
-  lcd.print(caption);		//Use print function instead of println
+  lcd.print(caption);   //Use print function instead of println
   delay(_delay);
 }
